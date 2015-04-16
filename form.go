@@ -32,7 +32,7 @@ type Param func(r *http.Request) error
 //        // handle error here
 //   }
 func Parse(r *http.Request, params ...Param) error {
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMemoryBytes); err != nil {
 		return err
 	}
 	for _, p := range params {
@@ -51,7 +51,7 @@ func Duration(name string, out *time.Duration, predicates ...Predicate) Param {
 				return err
 			}
 		}
-		v := r.PostForm.Get(name)
+		v := r.Form.Get(name)
 		if v == "" {
 			return nil
 		}
@@ -72,7 +72,7 @@ func String(name string, out *string, predicates ...Predicate) Param {
 				return err
 			}
 		}
-		*out = r.PostForm.Get(name)
+		*out = r.Form.Get(name)
 		return nil
 	}
 }
@@ -80,7 +80,7 @@ func String(name string, out *string, predicates ...Predicate) Param {
 // Int extracts the integer argument in decimal format e.g. "10"
 func Int(name string, out *int, predicates ...Predicate) Param {
 	return func(r *http.Request) error {
-		v := r.PostForm.Get(name)
+		v := r.Form.Get(name)
 		for _, p := range predicates {
 			if err := p.Pass(name, r); err != nil {
 				return err
@@ -115,7 +115,7 @@ func (p PredicateFunc) Pass(param string, r *http.Request) error {
 // it returns MissingParameterError when parameter is not present
 func Required() Predicate {
 	return PredicateFunc(func(param string, r *http.Request) error {
-		if r.PostForm.Get(param) == "" {
+		if r.Form.Get(param) == "" {
 			return &MissingParameterError{Param: param}
 		}
 		return nil
@@ -142,3 +142,5 @@ type BadParameterError struct {
 func (p *BadParameterError) Error() string {
 	return fmt.Sprintf("bad parameter '%v', error: %v", p.Param, p.Message)
 }
+
+const maxMemoryBytes = 64 * 1024
