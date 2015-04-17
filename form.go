@@ -3,6 +3,7 @@ package form
 
 import (
 	"fmt"
+	"mime"
 	"net/http"
 	"time"
 
@@ -32,8 +33,18 @@ type Param func(r *http.Request) error
 //        // handle error here
 //   }
 func Parse(r *http.Request, params ...Param) error {
-	if err := r.ParseMultipartForm(maxMemoryBytes); err != nil {
+	mtype, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
 		return err
+	}
+	if mtype == "multipart/form-data" {
+		if err := r.ParseMultipartForm(maxMemoryBytes); err != nil {
+			return err
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			return err
+		}
 	}
 	for _, p := range params {
 		if err := p(r); err != nil {

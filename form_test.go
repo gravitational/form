@@ -1,6 +1,9 @@
 package form
 
 import (
+	"bytes"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -80,6 +83,41 @@ func (s *FormSuite) TestDurationInvalidFormat(c *C) {
 	http.PostForm(srv.URL, url.Values{"var": []string{"hello"}})
 
 	c.Assert(err, FitsTypeOf, &BadParameterError{})
+}
+
+func (s *FormSuite) TestMultipartFormOK(c *C) {
+	var err error
+	var str string
+	var i int
+	var d time.Duration
+	srv := serveHandler(func(w http.ResponseWriter, r *http.Request) {
+		err = Parse(r,
+			String("svar", &str),
+			Int("ivar", &i),
+			Duration("dvar", &d),
+		)
+	})
+	defer srv.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	writer.WriteField("svar", "hello")
+	writer.WriteField("ivar", "77")
+	writer.WriteField("dvar", "100s")
+	boundary := writer.Boundary()
+	c.Assert(writer.Close(), IsNil)
+
+	r, err := http.NewRequest("POST", srv.URL, body)
+	c.Assert(err, IsNil)
+	r.Header.Set("Content-Type", fmt.Sprintf(`multipart/form-data;boundary="%v"`, boundary))
+
+	_, err = http.DefaultClient.Do(r)
+	c.Assert(err, IsNil)
+
+	c.Assert(str, Equals, "hello")
+	c.Assert(i, Equals, 77)
+	c.Assert(d, Equals, 100*time.Second)
 }
 
 func serveHandler(f http.HandlerFunc) *httptest.Server {
