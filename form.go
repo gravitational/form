@@ -109,6 +109,20 @@ func Int(name string, out *int, predicates ...Predicate) Param {
 	}
 }
 
+// StringSlice extracts the string slice of arguments by name
+func StringSlice(name string, out *[]string, predicates ...Predicate) Param {
+	return func(r *http.Request) error {
+		for _, p := range predicates {
+			if err := p.Pass(name, r); err != nil {
+				return err
+			}
+		}
+		*out = make([]string, len(r.Form[name]))
+		copy(*out, r.Form[name])
+		return nil
+	}
+}
+
 // Predicate provides an extensible way to check various conditions on a variable
 // e.g. setting minimums and maximums, or parsing some regular expressions
 type Predicate interface {

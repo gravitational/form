@@ -120,6 +120,27 @@ func (s *FormSuite) TestMultipartFormOK(c *C) {
 	c.Assert(d, Equals, 100*time.Second)
 }
 
+func (s *FormSuite) TestStringSliceOK(c *C) {
+	var err error
+	var slice []string
+	var empty []string
+	srv := serveHandler(func(w http.ResponseWriter, r *http.Request) {
+		err = Parse(r,
+			StringSlice("slice", &slice),
+			StringSlice("empty", &empty),
+		)
+	})
+	defer srv.Close()
+
+	http.PostForm(srv.URL, url.Values{
+		"slice": []string{"hello1", "hello2"},
+	})
+
+	c.Assert(err, IsNil)
+	c.Assert(slice, DeepEquals, []string{"hello1", "hello2"})
+	c.Assert(empty, DeepEquals, []string{})
+}
+
 func serveHandler(f http.HandlerFunc) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(f))
 }
