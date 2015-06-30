@@ -3,6 +3,8 @@ package form
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -25,25 +27,32 @@ func (s *FormSuite) TestFormOK(c *C) {
 	var str string
 	var i int
 	var d time.Duration
+	var t time.Time
 	srv := serveHandler(func(w http.ResponseWriter, r *http.Request) {
 		err = Parse(r,
 			String("svar", &str),
 			Int("ivar", &i),
 			Duration("dvar", &d),
+			Time("tvar", &t),
 		)
 	})
 	defer srv.Close()
 
+	dt := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
+	bytes, err := dt.MarshalText()
+	c.Assert(err, IsNil)
 	http.PostForm(srv.URL, url.Values{
 		"svar": []string{"hello"},
 		"ivar": []string{"77"},
 		"dvar": []string{"100s"},
+		"tvar": []string{string(bytes)},
 	})
 
 	c.Assert(err, IsNil)
 	c.Assert(str, Equals, "hello")
 	c.Assert(i, Equals, 77)
 	c.Assert(d, Equals, 100*time.Second)
+	c.Assert(t, Equals, dt)
 }
 
 func (s *FormSuite) TestStringRequiredMissing(c *C) {
@@ -139,6 +148,47 @@ func (s *FormSuite) TestStringSliceOK(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(slice, DeepEquals, []string{"hello1", "hello2"})
 	c.Assert(empty, DeepEquals, []string{})
+}
+
+func (s *FormSuite) TestFileSliceOK(c *C) {
+	var err error
+	var files Files
+	var values []string
+	srv := serveHandler(func(w http.ResponseWriter, r *http.Request) {
+		err = Parse(r,
+			FileSlice("file", &files),
+		)
+		c.Assert(err, IsNil)
+		values = make([]string, len(files))
+		for i, f := range files {
+			out, err := ioutil.ReadAll(f)
+			c.Assert(err, IsNil)
+			values[i] = string(out)
+		}
+	})
+	defer srv.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// upload multiple files with the same name
+	for _, data := range []string{"file 1", "file 2"} {
+		w, err := writer.CreateFormFile("file", "file.json")
+		c.Assert(err, IsNil)
+		_, err = io.WriteString(w, data)
+		c.Assert(err, IsNil)
+	}
+	boundary := writer.Boundary()
+	c.Assert(writer.Close(), IsNil)
+
+	req, err := http.NewRequest("POST", srv.URL, body)
+	req.Header.Set("Content-Type",
+		fmt.Sprintf(`multipart/form-data;boundary="%v"`, boundary))
+	c.Assert(err, IsNil)
+	_, err = http.DefaultClient.Do(req)
+	c.Assert(err, IsNil)
+
+	c.Assert(values, DeepEquals, []string{"file 1", "file 2"})
 }
 
 func serveHandler(f http.HandlerFunc) *httptest.Server {

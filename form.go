@@ -4,6 +4,7 @@ package form
 import (
 	"fmt"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -75,6 +76,27 @@ func Duration(name string, out *time.Duration, predicates ...Predicate) Param {
 	}
 }
 
+// Time extracts duration expressed as in RFC 3339 format
+func Time(name string, out *time.Time, predicates ...Predicate) Param {
+	return func(r *http.Request) error {
+		for _, p := range predicates {
+			if err := p.Pass(name, r); err != nil {
+				return err
+			}
+		}
+		v := r.Form.Get(name)
+		if v == "" {
+			return nil
+		}
+		var t time.Time
+		if err := t.UnmarshalText([]byte(v)); err != nil {
+			return &BadParameterError{Param: name, Message: err.Error()}
+		}
+		*out = t
+		return nil
+	}
+}
+
 // String extracts the argument by name as is without any changes
 func String(name string, out *string, predicates ...Predicate) Param {
 	return func(r *http.Request) error {
@@ -119,6 +141,44 @@ func StringSlice(name string, out *[]string, predicates ...Predicate) Param {
 		}
 		*out = make([]string, len(r.Form[name]))
 		copy(*out, r.Form[name])
+		return nil
+	}
+}
+
+// FileSlice reads the files uploaded with name parameter and initialized
+// the slice of files. The files should be closed by the callee after
+// usage, by executing f.Close() on each of them
+// files slice will be nil if there's an error
+func FileSlice(name string, files *Files, predicates ...Predicate) Param {
+	return func(r *http.Request) error {
+		err := r.ParseMultipartForm(maxMemoryBytes)
+		if err != nil {
+			return err
+		}
+		if r.MultipartForm == nil && r.MultipartForm.File == nil {
+			return fmt.Errorf("missing form")
+		}
+		for _, p := range predicates {
+			if err := p.Pass(name, r); err != nil {
+				return err
+			}
+		}
+
+		fhs := r.MultipartForm.File[name]
+		if len(fhs) == 0 {
+			*files = []multipart.File{}
+			return nil
+		}
+
+		*files = make([]multipart.File, len(fhs))
+		for i, fh := range fhs {
+			f, err := fh.Open()
+			if err != nil {
+				files.Close()
+				return err
+			}
+			(*files)[i] = f
+		}
 		return nil
 	}
 }
@@ -169,3 +229,30 @@ func (p *BadParameterError) Error() string {
 }
 
 const maxMemoryBytes = 64 * 1024
+
+// Files is a slice of multipart.File that provides additional
+// convenient method to close all files as a single operation
+type Files []multipart.File
+
+func (fs *Files) Close() error {
+	e := &FilesCloseError{}
+	for _, f := range *fs {
+		if f != nil {
+			if err := f.Close(); err != nil {
+				e.Errors = append(e.Errors, err)
+			}
+		}
+	}
+	if len(e.Errors) != 0 {
+		return e
+	}
+	return nil
+}
+
+type FilesCloseError struct {
+	Errors []error
+}
+
+func (p *FilesCloseError) Error() string {
+	return fmt.Sprintf("failed to close files, error: %v", p.Errors)
+}
