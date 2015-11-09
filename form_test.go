@@ -169,16 +169,19 @@ func (s *FormSuite) TestFileSliceOK(c *C) {
 	var err error
 	var files Files
 	var values []string
+	var names []string
 	srv := serveHandler(func(w http.ResponseWriter, r *http.Request) {
 		err = Parse(r,
 			FileSlice("file", &files),
 		)
 		c.Assert(err, IsNil)
 		values = make([]string, len(files))
+		names = make([]string, len(files))
 		for i, f := range files {
 			out, err := ioutil.ReadAll(f)
 			c.Assert(err, IsNil)
 			values[i] = string(out)
+			names[i] = f.Name()
 		}
 	})
 	defer srv.Close()
@@ -187,8 +190,8 @@ func (s *FormSuite) TestFileSliceOK(c *C) {
 	writer := multipart.NewWriter(body)
 
 	// upload multiple files with the same name
-	for _, data := range []string{"file 1", "file 2"} {
-		w, err := writer.CreateFormFile("file", "file.json")
+	for i, data := range []string{"file 1", "file 2"} {
+		w, err := writer.CreateFormFile("file", fmt.Sprintf("file%v.json", i+1))
 		c.Assert(err, IsNil)
 		_, err = io.WriteString(w, data)
 		c.Assert(err, IsNil)
@@ -204,6 +207,7 @@ func (s *FormSuite) TestFileSliceOK(c *C) {
 	c.Assert(err, IsNil)
 
 	c.Assert(values, DeepEquals, []string{"file 1", "file 2"})
+	c.Assert(names, DeepEquals, []string{"file1.json", "file2.json"})
 }
 
 func serveHandler(f http.HandlerFunc) *httptest.Server {

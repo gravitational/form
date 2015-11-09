@@ -181,18 +181,18 @@ func FileSlice(name string, files *Files, predicates ...Predicate) Param {
 
 		fhs := r.MultipartForm.File[name]
 		if len(fhs) == 0 {
-			*files = []multipart.File{}
+			*files = []*FileWrapper{}
 			return nil
 		}
 
-		*files = make([]multipart.File, len(fhs))
+		*files = make([]*FileWrapper, len(fhs))
 		for i, fh := range fhs {
 			f, err := fh.Open()
 			if err != nil {
 				files.Close()
 				return err
 			}
-			(*files)[i] = f
+			(*files)[i] = &FileWrapper{f, fh.Filename}
 		}
 		return nil
 	}
@@ -245,9 +245,19 @@ func (p *BadParameterError) Error() string {
 
 const maxMemoryBytes = 64 * 1024
 
+type FileWrapper struct {
+	multipart.File
+	name string
+}
+
+// Name returns file name as set during upload
+func (f *FileWrapper) Name() string {
+	return f.name
+}
+
 // Files is a slice of multipart.File that provides additional
 // convenient method to close all files as a single operation
-type Files []multipart.File
+type Files []*FileWrapper
 
 func (fs *Files) Close() error {
 	e := &FilesCloseError{}
