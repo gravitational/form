@@ -192,7 +192,11 @@ func FileSlice(name string, files *Files, predicates ...Predicate) Param {
 				files.Close()
 				return err
 			}
-			(*files)[i] = &FileWrapper{f, fh.Filename}
+			(*files)[i] = &FileWrapper{
+				File:   f,
+				header: fh.Header,
+				name:   fh.Filename,
+			}
 		}
 		return nil
 	}
@@ -247,12 +251,18 @@ const maxMemoryBytes = 64 * 1024
 
 type FileWrapper struct {
 	multipart.File
-	name string
+	header map[string][]string
+	name   string
 }
 
 // Name returns file name as set during upload
 func (f *FileWrapper) Name() string {
 	return f.name
+}
+
+// Header returns MIME header from the file part
+func (f *FileWrapper) Header() map[string][]string {
+	return f.header
 }
 
 // Files is a slice of multipart.File that provides additional
